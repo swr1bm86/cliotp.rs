@@ -3,9 +3,11 @@ pub mod ops;
 
 pub use io::{Arg, Storage};
 pub use ops::{
-    AddSubCommand, CliSubCommand, DelSubCommand, ListSubCommand, NowSubCommand, UpdateSubCommand,
+    AddSubCommand, CliSubCommand, DelSubCommand, ListSubCommand, MergeSubCommand, NowSubCommand,
+    UpdateSubCommand,
 };
 
+use std::path::PathBuf;
 use structopt::clap::AppSettings;
 use structopt::StructOpt;
 
@@ -73,6 +75,18 @@ pub enum Command {
         #[structopt(short = "n", long = "name", help = "account name")]
         name: String,
     },
+
+    #[structopt(
+        name = "merge",
+        about = "Merge accounts from JSON files into current storage"
+    )]
+    Merge {
+        #[structopt(
+            help = "JSON files to merge (plain or Redis escaped format)",
+            required = true
+        )]
+        files: Vec<PathBuf>,
+    },
 }
 
 pub fn process(storage: &dyn Storage, command: Command) -> Result<String, String> {
@@ -110,6 +124,8 @@ pub fn process(storage: &dyn Storage, command: Command) -> Result<String, String
             name,
             secret: None,
         }),
+
+        Command::Merge { files } => MergeSubCommand { storage }.process(files),
     };
 
     result.map(|rtn| format!("{}", rtn))

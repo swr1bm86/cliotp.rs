@@ -136,6 +136,27 @@ impl FileDB {
         })
     }
 
+    pub fn merge(&self, incoming: Data) -> SafeRtn {
+        self.after_data(|mut table| {
+            let mut added: u32 = 0;
+            let mut skipped: u32 = 0;
+            for (exchange_name, accounts) in incoming {
+                let exchange_data = table.entry(exchange_name).or_default();
+                for (name, secret) in accounts {
+                    if let std::collections::hash_map::Entry::Vacant(e) = exchange_data.entry(name)
+                    {
+                        e.insert(secret);
+                        added += 1;
+                    } else {
+                        skipped += 1;
+                    }
+                }
+            }
+            self.write_data(&table)
+                .map(|_| Rtn::MergeResult { added, skipped })
+        })
+    }
+
     pub fn get(&self, arg: &Arg) -> SafeRtn {
         self.after_data(|table| {
             table
@@ -172,6 +193,10 @@ impl Storage for FileDB {
 
     fn get(&self, arg: &Arg) -> Result<Rtn, String> {
         self.get(arg)
+    }
+
+    fn merge(&self, incoming: Data) -> Result<Rtn, String> {
+        self.merge(incoming)
     }
 }
 
@@ -579,5 +604,149 @@ mod tests {
 
         let data = db.read_data().unwrap();
         assert_eq!(data["test_exchange"]["alice"], "S1");
+    }
+
+    // ── Merge ──
+
+    #[test]
+    fn test_merge_into_empty_storage() {
+        let db = tmp_db("merge_empty");
+        let mut incoming: Data = HashMap::new();
+        let mut ex = HashMap::new();
+        ex.insert("alice".to_owned(), "S1".to_owned());
+        ex.insert("bob".to_owned(), "S2".to_owned());
+        incoming.insert("test_exchange".to_owned(), ex);
+
+        let result = db.merge(incoming).unwrap();
+        match result {
+            Rtn::MergeResult { added, skipped } => {
+                assert_eq!(added, 2);
+                assert_eq!(skipped, 0);
+            }
+            _ => panic!("expected Rtn::MergeResult"),
+        }
+
+        let data = db.read_data().unwrap();
+        assert_eq!(data["test_exchange"]["alice"], "S1");
+        assert_eq!(data["test_exchange"]["bob"], "S2");
+    }
+
+    #[test]
+    fn test_merge_skips_existing_accounts() {
+        let db = tmp_db("merge_skip");
+        db.add(&make_arg("test_exchange", "alice", Some("ORIGINAL")))
+            .unwrap();
+
+        let mut incoming: Data = HashMap::new();
+        let mut ex = HashMap::new();
+        ex.insert("alice".to_owned(), "INCOMING".to_owned());
+        ex.insert("bob".to_owned(), "S2".to_owned());
+        incoming.insert("test_exchange".to_owned(), ex);
+
+        let result = db.merge(incoming).unwrap();
+        match result {
+            Rtn::MergeResult { added, skipped } => {
+                assert_eq!(added, 1);
+                assert_eq!(skipped, 1);
+            }
+            _ => panic!("expected Rtn::MergeResult"),
+        }
+
+        let data = db.read_data().unwrap();
+        // existing account keeps original secret
+        assert_eq!(data["test_exchange"]["alice"], "ORIGINAL");
+        assert_eq!(data["test_exchange"]["bob"], "S2");
+    }
+
+    #[test]
+    fn test_merge_new_exchange() {
+        let db = tmp_db("merge_new_ex");
+        db.add(&make_arg("test_exchange", "alice", Some("S1")))
+            .unwrap();
+
+        let mut incoming: Data = HashMap::new();
+        let mut ex2 = HashMap::new();
+        ex2.insert("carol".to_owned(), "S3".to_owned());
+        incoming.insert("test_exchange_2".to_owned(), ex2);
+
+        let result = db.merge(incoming).unwrap();
+        match result {
+            Rtn::MergeResult { added, skipped } => {
+                assert_eq!(added, 1);
+                assert_eq!(skipped, 0);
+            }
+            _ => panic!("expected Rtn::MergeResult"),
+        }
+
+        let data = db.read_data().unwrap();
+        assert_eq!(data["test_exchange"]["alice"], "S1");
+        assert_eq!(data["test_exchange_2"]["carol"], "S3");
+    }
+
+    #[test]
+    fn test_merge_empty_incoming() {
+        let db = tmp_db("merge_empty_incoming");
+        db.add(&make_arg("test_exchange", "alice", Some("S1")))
+            .unwrap();
+
+        let incoming: Data = HashMap::new();
+        let result = db.merge(incoming).unwrap();
+        match result {
+            Rtn::MergeResult { added, skipped } => {
+                assert_eq!(added, 0);
+                assert_eq!(skipped, 0);
+            }
+            _ => panic!("expected Rtn::MergeResult"),
+        }
+
+        let data = db.read_data().unwrap();
+        assert_eq!(data["test_exchange"]["alice"], "S1");
+    }
+
+    #[test]
+    fn test_merge_multiple_exchanges() {
+        let db = tmp_db("merge_multi_ex");
+
+        let mut incoming: Data = HashMap::new();
+        let mut ex1 = HashMap::new();
+        ex1.insert("alice".to_owned(), "S1".to_owned());
+        incoming.insert("test_exchange".to_owned(), ex1);
+        let mut ex2 = HashMap::new();
+        ex2.insert("bob".to_owned(), "S2".to_owned());
+        incoming.insert("test_exchange_2".to_owned(), ex2);
+
+        let result = db.merge(incoming).unwrap();
+        match result {
+            Rtn::MergeResult { added, skipped } => {
+                assert_eq!(added, 2);
+                assert_eq!(skipped, 0);
+            }
+            _ => panic!("expected Rtn::MergeResult"),
+        }
+
+        let data = db.read_data().unwrap();
+        assert_eq!(data.len(), 2);
+        assert_eq!(data["test_exchange"]["alice"], "S1");
+        assert_eq!(data["test_exchange_2"]["bob"], "S2");
+    }
+
+    #[test]
+    fn test_merge_via_storage_trait() {
+        let db = tmp_db("merge_trait");
+        let storage: &dyn Storage = &db;
+
+        let mut incoming: Data = HashMap::new();
+        let mut ex = HashMap::new();
+        ex.insert("alice".to_owned(), "S1".to_owned());
+        incoming.insert("test_exchange".to_owned(), ex);
+
+        let result = storage.merge(incoming).unwrap();
+        match result {
+            Rtn::MergeResult { added, skipped } => {
+                assert_eq!(added, 1);
+                assert_eq!(skipped, 0);
+            }
+            _ => panic!("expected Rtn::MergeResult"),
+        }
     }
 }

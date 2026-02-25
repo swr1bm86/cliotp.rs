@@ -173,4 +173,8 @@ impl<'a> Storage for DB<'a> {
     fn get(&self, arg: &Arg) -> Result<Rtn, String> {
         self.get(arg)
     }
+
+    fn merge(&self, _incoming: Data) -> Result<Rtn, String> {
+        unimplemented!("merge is not supported in db mode")
+    }
 }
