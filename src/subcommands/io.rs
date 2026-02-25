@@ -13,6 +13,14 @@ type Name = String;
 type Secret = String;
 pub type Data = HashMap<Exchange, HashMap<Name, Secret>>;
 
+pub trait Storage {
+    fn add(&self, arg: &Arg) -> Result<Rtn, String>;
+    fn update(&self, arg: &Arg) -> Result<Rtn, String>;
+    fn delete(&self, arg: &Arg) -> Result<Rtn, String>;
+    fn list(&self, exchange: Option<String>) -> Result<Rtn, String>;
+    fn get(&self, arg: &Arg) -> Result<Rtn, String>;
+}
+
 #[derive(Debug)]
 pub enum Rtn {
     Empty,

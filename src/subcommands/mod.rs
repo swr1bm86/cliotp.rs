@@ -1,8 +1,7 @@
 pub mod io;
 pub mod ops;
 
-use crate::db::DB;
-pub use io::{Arg, Rtn};
+pub use io::{Arg, Rtn, Storage};
 pub use ops::{
     AddSubCommand, CliSubCommand, DelSubCommand, ListSubCommand, NowSubCommand, UpdateSubCommand,
 };
@@ -12,6 +11,21 @@ use structopt::StructOpt;
 
 #[derive(StructOpt, Debug)]
 #[structopt(global_settings = &[AppSettings::ColoredHelp, AppSettings::VersionlessSubcommands])]
+pub struct Cli {
+    #[structopt(long = "mode", help = "storage mode: db or file", default_value = "db")]
+    pub mode: String,
+
+    #[structopt(
+        long = "file-path",
+        help = "path to json file (required when mode is file)"
+    )]
+    pub file_path: Option<String>,
+
+    #[structopt(subcommand)]
+    pub command: Command,
+}
+
+#[derive(StructOpt, Debug)]
 pub enum Command {
     #[structopt(name = "add", about = "Create new account")]
     Add {
@@ -56,19 +70,19 @@ pub enum Command {
     },
 }
 
-pub fn process(db: DB) -> Result<String, String> {
-    let result = match Command::from_args() {
+pub fn process(storage: &dyn Storage, command: Command) -> Result<String, String> {
+    let result = match command {
         Command::Add {
             exchange,
             name,
             secret,
-        } => AddSubCommand { db: &db }.process(Arg {
+        } => AddSubCommand { storage }.process(Arg {
             exchange: exchange,
             name: name,
             secret: Some(secret),
         }),
 
-        Command::Delete { exchange, name } => DelSubCommand { db: &db }.process(Arg {
+        Command::Delete { exchange, name } => DelSubCommand { storage }.process(Arg {
             exchange: exchange,
             name: name,
             secret: None,
@@ -78,15 +92,15 @@ pub fn process(db: DB) -> Result<String, String> {
             exchange,
             name,
             secret,
-        } => UpdateSubCommand { db: &db }.process(Arg {
+        } => UpdateSubCommand { storage }.process(Arg {
             exchange: exchange,
             name: name,
             secret: Some(secret),
         }),
 
-        Command::List { exchange } => ListSubCommand { db: &db }.process(exchange),
+        Command::List { exchange } => ListSubCommand { storage }.process(exchange),
 
-        Command::Now { exchange, name } => NowSubCommand { db: &db }.process(Arg {
+        Command::Now { exchange, name } => NowSubCommand { storage }.process(Arg {
             exchange: exchange,
             name: name,
             secret: None,

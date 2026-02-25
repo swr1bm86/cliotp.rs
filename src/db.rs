@@ -1,4 +1,4 @@
-use crate::subcommands::io::{Arg, Data, Rtn};
+use crate::subcommands::io::{Arg, Data, Rtn, Storage};
 use std::collections::HashMap;
 
 pub use r2d2_redis::r2d2::PooledConnection;
@@ -152,5 +152,27 @@ impl<'a> DB<'a> {
                     secret: secret.to_owned(),
                 })
         })
+    }
+}
+
+impl<'a> Storage for DB<'a> {
+    fn add(&self, arg: &Arg) -> Result<Rtn, String> {
+        self.add(arg)
+    }
+
+    fn update(&self, arg: &Arg) -> Result<Rtn, String> {
+        self.update(arg)
+    }
+
+    fn delete(&self, arg: &Arg) -> Result<Rtn, String> {
+        self.delete(arg)
+    }
+
+    fn list(&self, exchange: Option<String>) -> Result<Rtn, String> {
+        self.list(exchange)
+    }
+
+    fn get(&self, arg: &Arg) -> Result<Rtn, String> {
+        self.get(arg)
     }
 }

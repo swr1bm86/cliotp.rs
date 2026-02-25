@@ -1,4 +1,4 @@
-use crate::subcommands::io::{Arg, Data, Rtn};
+use crate::subcommands::io::{Arg, Data, Rtn, Storage};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
@@ -152,5 +152,27 @@ impl FileDB {
                     secret: secret.to_owned(),
                 })
         })
+    }
+}
+
+impl Storage for FileDB {
+    fn add(&self, arg: &Arg) -> Result<Rtn, String> {
+        self.add(arg)
+    }
+
+    fn update(&self, arg: &Arg) -> Result<Rtn, String> {
+        self.update(arg)
+    }
+
+    fn delete(&self, arg: &Arg) -> Result<Rtn, String> {
+        self.delete(arg)
+    }
+
+    fn list(&self, exchange: Option<String>) -> Result<Rtn, String> {
+        self.list(exchange)
+    }
+
+    fn get(&self, arg: &Arg) -> Result<Rtn, String> {
+        self.get(arg)
     }
 }
