@@ -15,10 +15,27 @@ use file::FileDB;
 use structopt::StructOpt;
 use subcommands::Cli;
 
+fn expand_tilde(path: &str) -> PathBuf {
+    if path.starts_with("~/") {
+        match dirs::home_dir() {
+            Some(home) => home.join(&path[2..]),
+            None => PathBuf::from(path),
+        }
+    } else {
+        PathBuf::from(path)
+    }
+}
+
 fn main() {
     let cli = Cli::from_args();
 
     let result = match cli.mode.as_str() {
+        "file" => {
+            let storage = FileDB {
+                file_path: expand_tilde(&cli.file_path),
+            };
+            subcommands::process(&storage, cli.command)
+        }
         "db" => {
             let manager = RedisConnectionManager::new("redis://localhost").unwrap();
             let pool = r2d2::Pool::builder().build(manager).unwrap();
@@ -28,21 +45,7 @@ fn main() {
             };
             subcommands::process(&storage, cli.command)
         }
-        "file" => {
-            let path = cli
-                .file_path
-                .ok_or(String::from("--file-path is required when mode is file"));
-            match path {
-                Ok(p) => {
-                    let storage = FileDB {
-                        file_path: PathBuf::from(p),
-                    };
-                    subcommands::process(&storage, cli.command)
-                }
-                Err(e) => Err(e),
-            }
-        }
-        other => Err(format!("unknown mode: {}, use 'db' or 'file'", other)),
+        other => Err(format!("unknown mode: {}, use 'file' or 'db'", other)),
     };
 
     match result {

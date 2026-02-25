@@ -12,14 +12,19 @@ use structopt::StructOpt;
 #[derive(StructOpt, Debug)]
 #[structopt(global_settings = &[AppSettings::ColoredHelp, AppSettings::VersionlessSubcommands])]
 pub struct Cli {
-    #[structopt(long = "mode", help = "storage mode: db or file", default_value = "db")]
+    #[structopt(
+        long = "mode",
+        help = "storage mode: file or db",
+        default_value = "file"
+    )]
     pub mode: String,
 
     #[structopt(
         long = "file-path",
-        help = "path to json file (required when mode is file)"
+        help = "path to json file (used in file mode)",
+        default_value = "~/.cliotp/otp.json"
     )]
-    pub file_path: Option<String>,
+    pub file_path: String,
 
     #[structopt(subcommand)]
     pub command: Command,
