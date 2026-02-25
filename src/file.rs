@@ -174,3 +174,410 @@ impl Storage for FileDB {
         self.get(arg)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    fn tmp_db(name: &str) -> FileDB {
+        let dir = std::env::temp_dir().join("cliotp_test");
+        let _ = fs::create_dir_all(&dir);
+        let file_path = dir.join(format!("{}.json", name));
+        let _ = fs::remove_file(&file_path);
+        FileDB { file_path }
+    }
+
+    fn make_arg(exchange: &str, name: &str, secret: Option<&str>) -> Arg {
+        Arg {
+            exchange: exchange.to_owned(),
+            name: name.to_owned(),
+            secret: secret.map(|s| s.to_owned()),
+        }
+    }
+
+    // ── Add ──
+
+    #[test]
+    fn test_add_new_account() {
+        let db = tmp_db("add_new");
+        let arg = make_arg("test_exchange", "alice", Some("SECRET1"));
+        let result = db.add(&arg);
+        assert!(result.is_ok());
+
+        // verify persisted
+        let data = db.read_data().unwrap();
+        assert_eq!(data["test_exchange"]["alice"], "SECRET1");
+    }
+
+    #[test]
+    fn test_add_second_account_same_exchange() {
+        let db = tmp_db("add_second");
+        db.add(&make_arg("test_exchange", "alice", Some("S1")))
+            .unwrap();
+        db.add(&make_arg("test_exchange", "bob", Some("S2")))
+            .unwrap();
+
+        let data = db.read_data().unwrap();
+        assert_eq!(data["test_exchange"].len(), 2);
+        assert_eq!(data["test_exchange"]["alice"], "S1");
+        assert_eq!(data["test_exchange"]["bob"], "S2");
+    }
+
+    #[test]
+    fn test_add_different_exchanges() {
+        let db = tmp_db("add_diff_ex");
+        db.add(&make_arg("test_exchange", "alice", Some("S1")))
+            .unwrap();
+        db.add(&make_arg("test_exchange_2", "bob", Some("S2")))
+            .unwrap();
+
+        let data = db.read_data().unwrap();
+        assert_eq!(data.len(), 2);
+        assert_eq!(data["test_exchange"]["alice"], "S1");
+        assert_eq!(data["test_exchange_2"]["bob"], "S2");
+    }
+
+    #[test]
+    fn test_add_duplicate_account_fails() {
+        let db = tmp_db("add_dup");
+        db.add(&make_arg("test_exchange", "alice", Some("S1")))
+            .unwrap();
+        let result = db.add(&make_arg("test_exchange", "alice", Some("S2")));
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "account exists already");
+    }
+
+    #[test]
+    fn test_add_no_secret_fails() {
+        let db = tmp_db("add_no_secret");
+        let result = db.add(&make_arg("test_exchange", "alice", None));
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "no secret supplied");
+    }
+
+    // ── Update ──
+
+    #[test]
+    fn test_update_existing_account() {
+        let db = tmp_db("update_ok");
+        db.add(&make_arg("test_exchange", "alice", Some("OLD")))
+            .unwrap();
+        let result = db.update(&make_arg("test_exchange", "alice", Some("NEW")));
+        assert!(result.is_ok());
+
+        let data = db.read_data().unwrap();
+        assert_eq!(data["test_exchange"]["alice"], "NEW");
+    }
+
+    #[test]
+    fn test_update_no_exchange_fails() {
+        let db = tmp_db("update_no_ex");
+        let result = db.update(&make_arg("test_exchange", "alice", Some("NEW")));
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "no exchange found");
+    }
+
+    #[test]
+    fn test_update_no_account_fails() {
+        let db = tmp_db("update_no_acc");
+        db.add(&make_arg("test_exchange", "alice", Some("S1")))
+            .unwrap();
+        let result = db.update(&make_arg("test_exchange", "bob", Some("NEW")));
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "no account found");
+    }
+
+    #[test]
+    fn test_update_no_secret_fails() {
+        let db = tmp_db("update_no_secret");
+        db.add(&make_arg("test_exchange", "alice", Some("S1")))
+            .unwrap();
+        let result = db.update(&make_arg("test_exchange", "alice", None));
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "no secret supplied");
+    }
+
+    // ── Delete ──
+
+    #[test]
+    fn test_delete_existing_account() {
+        let db = tmp_db("delete_ok");
+        db.add(&make_arg("test_exchange", "alice", Some("S1")))
+            .unwrap();
+        let result = db.delete(&make_arg("test_exchange", "alice", None));
+        assert!(result.is_ok());
+
+        let data = db.read_data().unwrap();
+        assert!(!data["test_exchange"].contains_key("alice"));
+    }
+
+    #[test]
+    fn test_delete_no_exchange_fails() {
+        let db = tmp_db("delete_no_ex");
+        let result = db.delete(&make_arg("test_exchange", "alice", None));
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "no exchange found");
+    }
+
+    #[test]
+    fn test_delete_no_account_fails() {
+        let db = tmp_db("delete_no_acc");
+        db.add(&make_arg("test_exchange", "alice", Some("S1")))
+            .unwrap();
+        let result = db.delete(&make_arg("test_exchange", "bob", None));
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "no account found");
+    }
+
+    #[test]
+    fn test_delete_does_not_affect_others() {
+        let db = tmp_db("delete_others");
+        db.add(&make_arg("test_exchange", "alice", Some("S1")))
+            .unwrap();
+        db.add(&make_arg("test_exchange", "bob", Some("S2")))
+            .unwrap();
+        db.delete(&make_arg("test_exchange", "alice", None))
+            .unwrap();
+
+        let data = db.read_data().unwrap();
+        assert_eq!(data["test_exchange"].len(), 1);
+        assert_eq!(data["test_exchange"]["bob"], "S2");
+    }
+
+    // ── List ──
+
+    #[test]
+    fn test_list_all_empty() {
+        let db = tmp_db("list_empty");
+        let result = db.list(None).unwrap();
+        match result {
+            Rtn::Multiple { data } => assert!(data.is_empty()),
+            _ => panic!("expected Rtn::Multiple"),
+        }
+    }
+
+    #[test]
+    fn test_list_all() {
+        let db = tmp_db("list_all");
+        db.add(&make_arg("test_exchange", "alice", Some("S1")))
+            .unwrap();
+        db.add(&make_arg("test_exchange_2", "bob", Some("S2")))
+            .unwrap();
+
+        let result = db.list(None).unwrap();
+        match result {
+            Rtn::Multiple { data } => assert_eq!(data.len(), 2),
+            _ => panic!("expected Rtn::Multiple"),
+        }
+    }
+
+    #[test]
+    fn test_list_by_exchange() {
+        let db = tmp_db("list_by_ex");
+        db.add(&make_arg("test_exchange", "alice", Some("S1")))
+            .unwrap();
+        db.add(&make_arg("test_exchange", "bob", Some("S2")))
+            .unwrap();
+        db.add(&make_arg("test_exchange_2", "carol", Some("S3")))
+            .unwrap();
+
+        let result = db.list(Some("test_exchange".to_owned())).unwrap();
+        match result {
+            Rtn::Multiple { data } => {
+                assert_eq!(data.len(), 2);
+                for item in &data {
+                    match item {
+                        Rtn::Single { exchange, .. } => assert_eq!(exchange, "test_exchange"),
+                        _ => panic!("expected Rtn::Single inside Multiple"),
+                    }
+                }
+            }
+            _ => panic!("expected Rtn::Multiple"),
+        }
+    }
+
+    #[test]
+    fn test_list_nonexistent_exchange_returns_empty() {
+        let db = tmp_db("list_no_ex");
+        db.add(&make_arg("test_exchange", "alice", Some("S1")))
+            .unwrap();
+
+        let result = db
+            .list(Some("test_exchange_nonexistent".to_owned()))
+            .unwrap();
+        match result {
+            Rtn::Multiple { data } => assert!(data.is_empty()),
+            _ => panic!("expected Rtn::Multiple"),
+        }
+    }
+
+    // ── Get (used by Now subcommand) ──
+
+    #[test]
+    fn test_get_existing_account() {
+        let db = tmp_db("get_ok");
+        db.add(&make_arg("test_exchange", "alice", Some("MYSECRET")))
+            .unwrap();
+
+        let result = db.get(&make_arg("test_exchange", "alice", None)).unwrap();
+        match result {
+            Rtn::Secret { secret } => assert_eq!(secret, "MYSECRET"),
+            _ => panic!("expected Rtn::Secret"),
+        }
+    }
+
+    #[test]
+    fn test_get_no_exchange_fails() {
+        let db = tmp_db("get_no_ex");
+        let result = db.get(&make_arg("test_exchange", "alice", None));
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "no exchange found");
+    }
+
+    #[test]
+    fn test_get_no_account_fails() {
+        let db = tmp_db("get_no_acc");
+        db.add(&make_arg("test_exchange", "alice", Some("S1")))
+            .unwrap();
+        let result = db.get(&make_arg("test_exchange", "bob", None));
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "no account found");
+    }
+
+    // ── Storage trait dispatch ──
+
+    #[test]
+    fn test_storage_trait_add_and_get() {
+        let db = tmp_db("trait_add_get");
+        let storage: &dyn Storage = &db;
+
+        storage
+            .add(&make_arg("test_exchange", "alice", Some("TRAITKEY")))
+            .unwrap();
+        let result = storage
+            .get(&make_arg("test_exchange", "alice", None))
+            .unwrap();
+        match result {
+            Rtn::Secret { secret } => assert_eq!(secret, "TRAITKEY"),
+            _ => panic!("expected Rtn::Secret"),
+        }
+    }
+
+    #[test]
+    fn test_storage_trait_update() {
+        let db = tmp_db("trait_update");
+        let storage: &dyn Storage = &db;
+
+        storage
+            .add(&make_arg("test_exchange", "alice", Some("OLD")))
+            .unwrap();
+        storage
+            .update(&make_arg("test_exchange", "alice", Some("NEW")))
+            .unwrap();
+
+        let result = storage
+            .get(&make_arg("test_exchange", "alice", None))
+            .unwrap();
+        match result {
+            Rtn::Secret { secret } => assert_eq!(secret, "NEW"),
+            _ => panic!("expected Rtn::Secret"),
+        }
+    }
+
+    #[test]
+    fn test_storage_trait_delete() {
+        let db = tmp_db("trait_delete");
+        let storage: &dyn Storage = &db;
+
+        storage
+            .add(&make_arg("test_exchange", "alice", Some("S1")))
+            .unwrap();
+        storage
+            .delete(&make_arg("test_exchange", "alice", None))
+            .unwrap();
+
+        let result = storage.get(&make_arg("test_exchange", "alice", None));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_storage_trait_list() {
+        let db = tmp_db("trait_list");
+        let storage: &dyn Storage = &db;
+
+        storage
+            .add(&make_arg("test_exchange", "alice", Some("S1")))
+            .unwrap();
+        let result = storage.list(None).unwrap();
+        match result {
+            Rtn::Multiple { data } => assert_eq!(data.len(), 1),
+            _ => panic!("expected Rtn::Multiple"),
+        }
+    }
+
+    // ── File persistence ──
+
+    #[test]
+    fn test_data_persists_across_instances() {
+        let dir = std::env::temp_dir().join("cliotp_test");
+        let _ = fs::create_dir_all(&dir);
+        let file_path = dir.join("persist.json");
+        let _ = fs::remove_file(&file_path);
+
+        let db1 = FileDB {
+            file_path: file_path.clone(),
+        };
+        db1.add(&make_arg("test_exchange", "alice", Some("PERSIST")))
+            .unwrap();
+
+        // new instance reading same file
+        let db2 = FileDB { file_path };
+        let result = db2.get(&make_arg("test_exchange", "alice", None)).unwrap();
+        match result {
+            Rtn::Secret { secret } => assert_eq!(secret, "PERSIST"),
+            _ => panic!("expected Rtn::Secret"),
+        }
+    }
+
+    #[test]
+    fn test_read_empty_file() {
+        let dir = std::env::temp_dir().join("cliotp_test");
+        let _ = fs::create_dir_all(&dir);
+        let file_path = dir.join("empty.json");
+        fs::write(&file_path, "").unwrap();
+
+        let db = FileDB { file_path };
+        let data = db.read_data().unwrap();
+        assert!(data.is_empty());
+    }
+
+    #[test]
+    fn test_read_nonexistent_file() {
+        let file_path = std::env::temp_dir()
+            .join("cliotp_test")
+            .join("does_not_exist.json");
+        let _ = fs::remove_file(&file_path);
+
+        let db = FileDB { file_path };
+        let data = db.read_data().unwrap();
+        assert!(data.is_empty());
+    }
+
+    #[test]
+    fn test_creates_parent_dirs() {
+        let dir = std::env::temp_dir()
+            .join("cliotp_test")
+            .join("nested")
+            .join("deep");
+        let _ = fs::remove_dir_all(&dir);
+        let file_path = dir.join("otp.json");
+
+        let db = FileDB { file_path };
+        db.add(&make_arg("test_exchange", "alice", Some("S1")))
+            .unwrap();
+
+        let data = db.read_data().unwrap();
+        assert_eq!(data["test_exchange"]["alice"], "S1");
+    }
+}
