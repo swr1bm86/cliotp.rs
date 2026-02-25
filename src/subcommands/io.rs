@@ -27,7 +27,7 @@ pub enum Rtn {
     Code { code: String },
     Secret { secret: String },
     Single { exchange: String, name: String },
-    Multiple { data: Box<Vec<Rtn>> },
+    Multiple { data: Vec<Rtn> },
 }
 
 impl fmt::Display for Rtn {
@@ -38,9 +38,9 @@ impl fmt::Display for Rtn {
             Rtn::Secret { .. } => write!(f, "$$$"),
             Rtn::Single { exchange, name } => write!(f, "{} -> {}", exchange, name),
             Rtn::Multiple { data } => {
-                for rtn in (*data).iter() {
+                for rtn in data.iter() {
                     rtn.fmt(f).unwrap();
-                    write!(f, "\n").unwrap();
+                    writeln!(f).unwrap();
                 }
                 Ok(())
             }

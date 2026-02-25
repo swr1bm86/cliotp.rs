@@ -1,7 +1,7 @@
 pub mod io;
 pub mod ops;
 
-pub use io::{Arg, Rtn, Storage};
+pub use io::{Arg, Storage};
 pub use ops::{
     AddSubCommand, CliSubCommand, DelSubCommand, ListSubCommand, NowSubCommand, UpdateSubCommand,
 };
@@ -82,14 +82,14 @@ pub fn process(storage: &dyn Storage, command: Command) -> Result<String, String
             name,
             secret,
         } => AddSubCommand { storage }.process(Arg {
-            exchange: exchange,
-            name: name,
+            exchange,
+            name,
             secret: Some(secret),
         }),
 
         Command::Delete { exchange, name } => DelSubCommand { storage }.process(Arg {
-            exchange: exchange,
-            name: name,
+            exchange,
+            name,
             secret: None,
         }),
 
@@ -98,16 +98,16 @@ pub fn process(storage: &dyn Storage, command: Command) -> Result<String, String
             name,
             secret,
         } => UpdateSubCommand { storage }.process(Arg {
-            exchange: exchange,
-            name: name,
+            exchange,
+            name,
             secret: Some(secret),
         }),
 
         Command::List { exchange } => ListSubCommand { storage }.process(exchange),
 
         Command::Now { exchange, name } => NowSubCommand { storage }.process(Arg {
-            exchange: exchange,
-            name: name,
+            exchange,
+            name,
             secret: None,
         }),
     };

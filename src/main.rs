@@ -16,9 +16,9 @@ use structopt::StructOpt;
 use subcommands::Cli;
 
 fn expand_tilde(path: &str) -> PathBuf {
-    if path.starts_with("~/") {
+    if let Some(stripped) = path.strip_prefix("~/") {
         match dirs::home_dir() {
-            Some(home) => home.join(&path[2..]),
+            Some(home) => home.join(stripped),
             None => PathBuf::from(path),
         }
     } else {

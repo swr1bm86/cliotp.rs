@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
-type RTN = Result<Rtn, String>;
+type SafeRtn = Result<Rtn, String>;
 
 pub struct FileDB {
     pub file_path: PathBuf,
@@ -25,7 +25,7 @@ impl FileDB {
             })
     }
 
-    fn write_data(&self, table: &Data) -> RTN {
+    fn write_data(&self, table: &Data) -> SafeRtn {
         if let Some(parent) = self.file_path.parent() {
             if !parent.exists() {
                 fs::create_dir_all(parent).map_err(|e| format!("{:?}", e))?;
@@ -37,14 +37,14 @@ impl FileDB {
             .map(|_| Rtn::Empty)
     }
 
-    fn after_data<F>(&self, cb: F) -> RTN
+    fn after_data<F>(&self, cb: F) -> SafeRtn
     where
-        F: FnOnce(Data) -> RTN,
+        F: FnOnce(Data) -> SafeRtn,
     {
         self.read_data().and_then(cb)
     }
 
-    pub fn add(&self, arg: &Arg) -> RTN {
+    pub fn add(&self, arg: &Arg) -> SafeRtn {
         self.after_data(|mut table| {
             arg.secret
                 .to_owned()
@@ -68,7 +68,7 @@ impl FileDB {
         })
     }
 
-    pub fn update(&self, arg: &Arg) -> RTN {
+    pub fn update(&self, arg: &Arg) -> SafeRtn {
         self.after_data(|mut table| {
             arg.secret
                 .to_owned()
@@ -90,7 +90,7 @@ impl FileDB {
         })
     }
 
-    pub fn delete(&self, arg: &Arg) -> RTN {
+    pub fn delete(&self, arg: &Arg) -> SafeRtn {
         self.after_data(|mut table| {
             table
                 .get_mut(&arg.exchange)
@@ -107,7 +107,7 @@ impl FileDB {
         })
     }
 
-    pub fn list(&self, exchange: Option<String>) -> RTN {
+    pub fn list(&self, exchange: Option<String>) -> SafeRtn {
         self.after_data(|table| {
             let mut result = vec![];
             match &exchange {
@@ -132,13 +132,11 @@ impl FileDB {
                     }
                 }
             }
-            Ok(Rtn::Multiple {
-                data: Box::new(result),
-            })
+            Ok(Rtn::Multiple { data: result })
         })
     }
 
-    pub fn get(&self, arg: &Arg) -> RTN {
+    pub fn get(&self, arg: &Arg) -> SafeRtn {
         self.after_data(|table| {
             table
                 .get(&arg.exchange)

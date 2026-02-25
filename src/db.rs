@@ -2,10 +2,10 @@ use crate::subcommands::io::{Arg, Data, Rtn, Storage};
 use std::collections::HashMap;
 
 pub use r2d2_redis::r2d2::PooledConnection;
-pub use r2d2_redis::redis::{Commands, Connection, RedisResult};
+pub use r2d2_redis::redis::{Commands, RedisResult};
 pub use r2d2_redis::{r2d2, RedisConnectionManager};
 
-type RTN = Result<Rtn, String>;
+type SafeRtn = Result<Rtn, String>;
 
 pub struct DB<'a> {
     pub db_name: &'a str,
@@ -13,16 +13,16 @@ pub struct DB<'a> {
 }
 
 impl<'a> DB<'a> {
-    fn after_conn<F>(&self, cb: F) -> RTN
+    fn after_conn<F>(&self, cb: F) -> SafeRtn
     where
-        F: FnOnce(PooledConnection<RedisConnectionManager>) -> RTN,
+        F: FnOnce(PooledConnection<RedisConnectionManager>) -> SafeRtn,
     {
         self.pool.get().map_err(|e| format!("{:?}", e)).and_then(cb)
     }
 
-    fn after_data<F>(&self, cb: F) -> RTN
+    fn after_data<F>(&self, cb: F) -> SafeRtn
     where
-        F: FnMut(Data) -> RTN,
+        F: FnMut(Data) -> SafeRtn,
     {
         self.after_conn(|mut conn| {
             conn.get(self.db_name)
@@ -33,7 +33,7 @@ impl<'a> DB<'a> {
         })
     }
 
-    fn update_table(&self, table: Data) -> RTN {
+    fn update_table(&self, table: Data) -> SafeRtn {
         serde_json::to_string(&table)
             .map_err(|e| format!("{:?}", e))
             .and_then(|t| {
@@ -44,7 +44,7 @@ impl<'a> DB<'a> {
             })
     }
 
-    pub fn add(&self, arg: &Arg) -> RTN {
+    pub fn add(&self, arg: &Arg) -> SafeRtn {
         self.after_data(|mut table| {
             arg.secret
                 .to_owned()
@@ -68,7 +68,7 @@ impl<'a> DB<'a> {
         })
     }
 
-    pub fn update(&self, arg: &Arg) -> RTN {
+    pub fn update(&self, arg: &Arg) -> SafeRtn {
         self.after_data(|mut table| {
             arg.secret
                 .to_owned()
@@ -90,7 +90,7 @@ impl<'a> DB<'a> {
         })
     }
 
-    pub fn delete(&self, arg: &Arg) -> RTN {
+    pub fn delete(&self, arg: &Arg) -> SafeRtn {
         self.after_data(|mut table| {
             table
                 .get_mut(&arg.exchange)
@@ -107,7 +107,7 @@ impl<'a> DB<'a> {
         })
     }
 
-    pub fn list(&self, exchange: Option<String>) -> RTN {
+    pub fn list(&self, exchange: Option<String>) -> SafeRtn {
         self.after_data(|table| {
             let mut result = vec![];
             match &exchange {
@@ -132,13 +132,11 @@ impl<'a> DB<'a> {
                     }
                 }
             }
-            Ok(Rtn::Multiple {
-                data: Box::new(result),
-            })
+            Ok(Rtn::Multiple { data: result })
         })
     }
 
-    pub fn get(&self, arg: &Arg) -> RTN {
+    pub fn get(&self, arg: &Arg) -> SafeRtn {
         self.after_data(|table| {
             table
                 .get(&arg.exchange)
