@@ -5,6 +5,7 @@ extern crate google_authenticator;
 extern crate r2d2_redis;
 
 mod db;
+mod file;
 mod subcommands;
 
 use db::{r2d2, RedisConnectionManager, DB};
