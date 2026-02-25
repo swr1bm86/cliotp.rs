@@ -2,7 +2,7 @@
 name = "cliotp"
 version = "0.1.0"
 authors = ["zjhsdtc <zjhsdtc@gmail.com>"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 dirs = "1.0.5"
